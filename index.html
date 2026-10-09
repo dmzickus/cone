@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>cone.traffic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one Home Assistant–style entity card on asphalt; cone left, state + attributes right, history log below. */
+:root {
+  --bg: #e9eaea;
+  --surface: #fbfbfa;
+  --fg: #1d1e20;
+  --muted: #62656b;
+  --line: #d3d5d6;
+  --orange: #f2600c;
+  --stripe: #ffffff;
+  --ok: #1f8a4c;
+  --warn: #b7791f;
+  --bad: #c2362b;
+  --display: "Overpass", "Highway Gothic", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141517; --surface: #1f2023; --fg: #ececea; --muted: #9a9da3; --line: #34363a;
+  --orange: #ff7426; --stripe: #f4f4f2; --ok: #4cc17e; --warn: #e0a83c; --bad: #ef6a5e; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141517; --surface: #1f2023; --fg: #ececea; --muted: #9a9da3; --line: #34363a;
+  --orange: #ff7426; --stripe: #f4f4f2; --ok: #4cc17e; --warn: #e0a83c; --bad: #ef6a5e; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--display); }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 40px; display: grid; gap: 18px; }
+
+header { display: grid; gap: 4px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-weight: 900; font-size: clamp(30px, 7vw, 46px); line-height: 1; letter-spacing: -.01em; text-wrap: balance; }
+h1 span { color: var(--orange); }
+.sub { margin: 0; color: var(--muted); font-size: 15px; max-width: 60ch; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.main { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+@media (max-width: 560px) { .main { grid-template-columns: 1fr; } }
+
+.stage { position: relative; display: grid; place-items: end center; min-height: 240px; padding: 20px;
+  background: repeating-linear-gradient(-45deg, transparent 0 14px, color-mix(in srgb, var(--line) 45%, transparent) 14px 15px);
+  border-right: 1px solid var(--line); }
+@media (max-width: 560px) { .stage { border-right: 0; border-bottom: 1px solid var(--line); } }
+#cone { width: 150px; max-width: 100%; transform-origin: 50% 92%; transition: transform .6s cubic-bezier(.4,1.6,.5,1), opacity .5s; }
+.stage[data-state="knocked_over"] #cone { transform: rotate(-88deg) translateY(-18px); }
+.stage[data-state="stolen_by_frat"] #cone { opacity: 0; transform: translateX(140px) rotate(25deg); }
+.stage[data-state="ignored"] #cone { opacity: .35; }
+.gone { position: absolute; inset: auto 0 30px; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.info { padding: 20px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.state-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pill { font-family: var(--mono); font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.since { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: 700 14px var(--display); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--orange); }
+button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: #fff; }
+
+dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; font-family: var(--mono); font-size: 13px; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+
+.ask { border-top: 1px solid var(--line); padding: 18px 20px; display: grid; gap: 10px; }
+.ask button { justify-self: start; background: var(--fg); color: var(--surface); border-color: var(--fg); }
+.ask button:hover { background: var(--orange); border-color: var(--orange); color: #fff; }
+#answer { margin: 0; font-size: 17px; line-height: 1.45; min-height: 1.5em; max-width: 60ch; }
+
+.log { padding: 16px 20px 20px; }
+.log h2 { margin: 0 0 10px; font-size: 12px; font-family: var(--mono); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-family: var(--mono); font-size: 13px; }
+.log li { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
+.log time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+footer { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { #cone { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Paper waiver · traffic cone representation</div>
+    <h1>cone<span>.</span>traffic</h1>
+    <p class="sub">A traffic cone, integrated into Home Assistant. It has no authority, no sensors, and no reason to be here. Everyone obeys it anyway.</p>
+  </header>
+
+  <section class="card" aria-label="Entity card">
+    <div class="main">
+      <div class="stage" id="stage" data-state="upright">
+        <svg id="cone" viewBox="0 0 120 150" role="img" aria-label="Traffic cone">
+          <rect x="6" y="132" width="108" height="14" rx="3" fill="var(--orange)"/>
+          <rect x="6" y="140" width="108" height="6" rx="2" fill="#000" opacity=".18"/>
+          <polygon points="50,6 70,6 98,134 22,134" fill="var(--orange)"/>
+          <polygon points="43,40 77,40 82,62 38,62" fill="var(--stripe)"/>
+          <polygon points="33,84 87,84 92,106 28,106" fill="var(--stripe)"/>
+          <polygon points="50,6 56,6 30,134 22,134" fill="#000" opacity=".08"/>
+        </svg>
+        <div class="gone" id="gone" hidden>last seen heading toward Salisbury St</div>
+      </div>
+
+      <div class="info">
+        <div class="state-row">
+          <span class="pill ok" id="pill">upright</span>
+          <span class="since" id="since">since just now</span>
+        </div>
+        <div class="controls" role="group" aria-label="Set state">
+          <button id="s-upright" data-s="upright" aria-pressed="true">Upright</button>
+          <button id="s-knocked" data-s="knocked_over" aria-pressed="false">Knock over</button>
+          <button id="s-stolen" data-s="stolen_by_frat" aria-pressed="false">Stolen</button>
+          <button id="s-ignored" data-s="ignored" aria-pressed="false">Ignore it</button>
+        </div>
+        <dl>
+          <dt>entity_id</dt><dd>cone.traffic</dd>
+          <dt>color</dt><dd>#FF6600 (safety orange)</dd>
+          <dt>height</dt><dd>28 in</dd>
+          <dt>authority</dt><dd>none</dd>
+          <dt>compliance_rate</dt><dd id="compliance">99.4%</dd>
+          <dt>who_placed_it</dt><dd>unknown</dd>
+          <dt>terms_accepted</dt><dd>yes (by merging)</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="ask">
+      <button id="ask">Who put this cone here?</button>
+      <p id="answer" aria-live="polite">Nobody ever asks. Press the button and be the first.</p>
+    </div>
+
+    <div class="log">
+      <h2>History</h2>
+      <ol id="log"></ol>
+    </div>
+  </section>
+
+  <footer>Accompanies the essay “Self-Hosted.” No cones were harmed. One may have been borrowed.</footer>
+</div>
+
+<script>
+(() => {
+  const states = {
+    upright:        { cls: "ok",   compliance: "99.4%", msg: "Cone placed. Traffic merges without question." },
+    knocked_over:   { cls: "warn", compliance: "71.0%", msg: "Cone knocked over. Drivers still slow down out of habit." },
+    stolen_by_frat: { cls: "bad",  compliance: "0.0%",  msg: "Cone removed. The road was never actually closed." },
+    ignored:        { cls: "warn", compliance: "12.3%", msg: "Someone drove around the cone. Briefly, a human was in the loop." }
+  };
+  const answers = [
+    "A default setting. It was here before you, so you assumed it belonged here.",
+    "A cookie banner with one bright button and one gray one.",
+    "The recommendation algorithm. It put about four thousand cones on your feed today.",
+    "A Terms of Service update you accepted at 1:12 AM.",
+    "Nobody. It just appeared. That's how most infrastructure works.",
+    "A license-plate camera vendor. The town meeting is Thursday if you want to argue about it.",
+    "You did, when you stopped asking."
+  ];
+  const stage = document.getElementById("stage");
+  const pill = document.getElementById("pill");
+  const since = document.getElementById("since");
+  const gone = document.getElementById("gone");
+  const comp = document.getElementById("compliance");
+  const log = document.getElementById("log");
+  const answer = document.getElementById("answer");
+  let changedAt = Date.now(), ai = -1;
+
+  const stamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  function addLog(text) {
+    const li = document.createElement("li");
+    li.innerHTML = `<time>${stamp()}</time><span></span>`;
+    li.lastChild.textContent = text;
+    log.prepend(li);
+    while (log.children.length > 6) log.lastChild.remove();
+  }
+  function setState(s, quiet) {
+    const d = states[s];
+    stage.dataset.state = s;
+    pill.textContent = s;
+    pill.className = "pill " + d.cls;
+    comp.textContent = d.compliance;
+    gone.hidden = s !== "stolen_by_frat";
+    document.querySelectorAll(".controls button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === s)));
+    changedAt = Date.now();
+    if (!quiet) addLog(d.msg);
+  }
+  document.querySelectorAll(".controls button").forEach(b => b.addEventListener("click", () => setState(b.dataset.s)));
+  document.getElementById("ask").addEventListener("click", () => {
+    ai = (ai + 1) % answers.length;
+    answer.textContent = answers[ai];
+    addLog("Someone asked who put the cone here.");
+  });
+  setInterval(() => {
+    const m = Math.floor((Date.now() - changedAt) / 60000);
+    since.textContent = m < 1 ? "since just now" : `for ${m} min`;
+  }, 15000);
+
+  // example history so the card opens in a lived-in state
+  ["Cone placed on Institute Rd. No permit on file.",
+   "1,204 vehicles merged. 0 asked why.",
+   "Cone placed. Traffic merges without question."].forEach(addLog);
+  setState("upright", true);
+})();
+</script>
+</body>
+</html>
